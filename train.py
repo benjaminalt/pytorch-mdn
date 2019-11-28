@@ -3,6 +3,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import tables
+import sys
 
 # plt.switch_backend('agg')
 
@@ -14,7 +15,7 @@ import torch.utils.data
 # import model and utilities
 from model import LSTMRandWriter
 from utils import decay_learning_rate, save_checkpoint
-from plot import plot_trajectory
+from plot_training import RealTimePlotter
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -42,19 +43,22 @@ def main(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
     # initialize null hidden states and memory states
-    init_states = [torch.zeros((1, args.batch_size, args.cell_size), device=device)] * 4
+    init_states = [torch.zeros((1, args.batch_size, args.cell_size), device=device)] * 8
     init_states = [Variable(state, requires_grad=False) for state in init_states]
-    h1_init, c1_init, h2_init, c2_init = init_states
+    h1_init, c1_init, h2_init, c2_init, h3_init, c3_init, h4_init, c4_init = init_states
 
     t_loss = []
     v_loss = []
     best_validation_loss = 1E10
+
+    plotter = RealTimePlotter(["training", "validation"])
 
     # update training time
     start_time = time.time()
 
     for epoch in range(args.num_epochs):
         train_loss = 0
+        model.train()
         for batch_idx, (inputs, labels, masks) in enumerate(train_loader):
             # add inputs to each datapoint in the input sequence
             param_seq = inputs.unsqueeze(1).repeat(1, seq_len, 1)
@@ -67,8 +71,8 @@ def main(args):
 
             optimizer.zero_grad()
             # feed forward
-            outputs = model(x, (h1_init, c1_init), (h2_init, c2_init))
-            end, weights, mu_1, mu_2, log_sigma_1, log_sigma_2, rho, prev, prev2 = outputs
+            outputs = model(x, (h1_init, c1_init), (h2_init, c2_init), (h3_init, c3_init), (h4_init, c4_init))
+            end, weights, mu_1, mu_2, log_sigma_1, log_sigma_2, rho, prev, prev2, prev3, prev4 = outputs
 
             # supervision
             data = data.narrow(1, 1, timesteps)
@@ -78,42 +82,48 @@ def main(args):
             train_loss += loss.item()
             optimizer.step()
             if np.isnan(loss.item()):
-                print("Detected loss is NAN")
+                print("Detected loss is NAN, max(rho) = {}, min(rho) = {}".format(torch.max(rho), torch.min(rho)))
+                sys.exit(1)
 
             if batch_idx % 10 == 0:
                 print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(epoch + 1, batch_idx * len(data),
                                                                                len(train_loader.dataset),
                                                                                100. * batch_idx / len(train_loader),
                                                                                loss.item()))
+
+        avg_train_loss = train_loss / (len(train_loader.dataset) // args.batch_size)
+        plotter.update(0, epoch, avg_train_loss)
         # update training performance
-        print('====> Epoch: {} Average train loss: {:.4f}'.format( \
-            epoch + 1, train_loss / (len(train_loader.dataset) // args.batch_size)))
-        t_loss.append(train_loss / (len(train_loader.dataset) // args.batch_size))
+        print('====> Epoch: {} Average train loss: {:.4f}'.format(epoch + 1, avg_train_loss))
+        t_loss.append(avg_train_loss)
 
         # validation
-        # prepare validation sample data
-        (validation_inputs, validation_labels, validation_masks) = list(enumerate(validate_loader))[0][1]
-        validation_param_seq = validation_inputs.unsqueeze(1).repeat(1, seq_len, 1)
-        validation_data = torch.cat((validation_labels, validation_param_seq), dim=2).to(device)
-        step_back2 = validation_data.narrow(1, 0, timesteps)
-        validation_masks = validation_masks.narrow(1, 0, timesteps).to(device)
-        validation_masks = Variable(validation_masks, requires_grad=False)
+        validation_loss = 0
+        model.eval()
+        for validation_inputs, validation_labels, validation_masks in validate_loader:
+            validation_param_seq = validation_inputs.unsqueeze(1).repeat(1, seq_len, 1)
+            validation_data = torch.cat((validation_labels, validation_param_seq), dim=2).to(device)
+            step_back2 = validation_data.narrow(1, 0, timesteps)
+            validation_masks = validation_masks.narrow(1, 0, timesteps).to(device)
+            validation_masks = Variable(validation_masks, requires_grad=False)
+            x = Variable(step_back2, requires_grad=False)
 
-        x = Variable(step_back2, requires_grad=False)
+            outputs = model(x, (h1_init, c1_init), (h2_init, c2_init), (h3_init, c3_init), (h4_init, c4_init))
+            end, weights, mu_1, mu_2, log_sigma_1, log_sigma_2, rho, prev, prev2, prev3, prev4 = outputs
 
-        validation_data = validation_data.narrow(1, 1, timesteps)
-        y = Variable(validation_data, requires_grad=False)
+            validation_data = validation_data.narrow(1, 1, timesteps)
+            y = Variable(validation_data, requires_grad=False)
 
-        outputs = model(y, (h1_init, c1_init), (h2_init, c2_init))
-        end, weights, mu_1, mu_2, log_sigma_1, log_sigma_2, rho, prev, prev2 = outputs
-        loss = -log_likelihood(end, weights, mu_1, mu_2, log_sigma_1, log_sigma_2, rho, y, validation_masks) / torch.sum(validation_masks)
-        validation_loss = loss.item()
-        print('====> Epoch: {} Average validation loss: {:.4f}'.format(epoch + 1, validation_loss))
-        v_loss.append(validation_loss)
+            loss = -log_likelihood(end, weights, mu_1, mu_2, log_sigma_1, log_sigma_2, rho, y, validation_masks) / torch.sum(validation_masks)
+            validation_loss += loss.item()
+        avg_validation_loss = validation_loss / (len(validate_loader.dataset) // args.batch_size)
+        plotter.update(1, epoch, avg_validation_loss)
+        print('====> Epoch: {} Average validation loss: {:.4f}'.format(epoch + 1, avg_validation_loss))
+        v_loss.append(avg_validation_loss)
 
-        if validation_loss < best_validation_loss:
-            best_validation_loss = validation_loss
-            save_checkpoint(epoch, model, validation_loss, optimizer, args.model_dir, "best.pt")
+        if avg_validation_loss < best_validation_loss:
+            best_validation_loss = avg_validation_loss
+            save_checkpoint(epoch, model, avg_validation_loss, optimizer, args.model_dir, "best.pt")
 
         # # learning rate annealing
         # if (epoch+1)%10 == 0:
@@ -121,14 +131,11 @@ def main(args):
 
         # checkpoint model and training
         filename = 'epoch_{}.pt'.format(epoch + 1)
-        save_checkpoint(epoch, model, validation_loss, optimizer, args.model_dir, filename)
+        save_checkpoint(epoch, model, avg_validation_loss, optimizer, args.model_dir, filename)
 
         print('wall time: {}s'.format(time.time() - start_time))
 
-    f1 = plt.figure(1)
-    plt.plot(range(1, args.num_epochs + 1), t_loss, color='blue', linestyle='solid')
-    plt.plot(range(1, args.num_epochs + 1), v_loss, color='red', linestyle='solid')
-    f1.savefig("loss_curves", bbox_inches='tight')
+    plotter.save("loss_curves")
 
 
 # training objective
@@ -159,7 +166,7 @@ def log_likelihood(end, weights, mu_1, mu_2, log_sigma_1, log_sigma_2, rho, y, m
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("data_file", type=str)
-    parser.add_argument('--cell_size', type=int, default=400, help='size of LSTM hidden state')
+    parser.add_argument('--cell_size', type=int, default=800, help='size of LSTM hidden state')
     parser.add_argument('--batch_size', type=int, default=50, help='minibatch size')
     parser.add_argument('--num_epochs', type=int, default=50, help='number of epochs')
     parser.add_argument('--model_dir', type=str, default='save', help='directory to save model to')

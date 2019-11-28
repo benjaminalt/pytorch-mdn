@@ -201,5 +201,5 @@ dmypy.json
 
 data
 save
-loss_curves.png
+loss_curves_overfit_big_model_adamw.png
 

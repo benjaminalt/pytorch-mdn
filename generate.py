@@ -30,17 +30,19 @@ def generate_unconditionally(input_scaler, label_scaler, state_dict_file, cell_s
     np.random.seed(random_seed)
     initial_input = torch.cat((torch.zeros((1, 1, 3)), scaled_inputs), -1).to(device)
     # initialize null hidden states and memory states
-    init_states = [torch.zeros((1,1, cell_size), device=device)]*4
+    init_states = [torch.zeros((1,1, cell_size), device=device)]*8
     x = Variable(initial_input)
     init_states = [Variable(state, requires_grad = False) for state in init_states]
-    h1_init, c1_init, h2_init, c2_init = init_states
+    h1_init, c1_init, h2_init, c2_init, h3_init, c3_init, h4_init, c4_init, = init_states
     prev = (h1_init, c1_init)
     prev2 = (h2_init, c2_init)
+    prev3 = (h3_init, c3_init)
+    prev4 = (h4_init, c4_init)
     
     record = [np.array([0] * output_dim)]
 
     for i in range(timesteps):
-        end, weights, mu_1, mu_2, log_sigma_1, log_sigma_2, p, prev, prev2 = model(x, prev, prev2)
+        end, weights, mu_1, mu_2, log_sigma_1, log_sigma_2, p, prev, prev2, prev3, prev4 = model(x, prev, prev2, prev3, prev4)
 
         # sample end stroke indicator
         prob_end = end[0,0].item()
@@ -74,7 +76,7 @@ def generate_unconditionally(input_scaler, label_scaler, state_dict_file, cell_s
 def main(args):
     input_scaler = joblib.load(args.input_scaler_filepath)
     label_scaler = joblib.load(args.label_scaler_filepath)
-    generate_unconditionally(input_scaler, label_scaler, args.state_dict_filepath, timesteps=args.timesteps)
+    generate_unconditionally(input_scaler, label_scaler, args.state_dict_filepath, timesteps=args.timesteps, cell_size=800)
 
 
 if __name__ == "__main__":

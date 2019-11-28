@@ -5,7 +5,6 @@ import os
 import numpy as np
 import math
 import random
-import json
 import joblib
 
 from sklearn.preprocessing import MinMaxScaler
