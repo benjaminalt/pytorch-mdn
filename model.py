@@ -15,13 +15,13 @@ class LSTMRandWriter(nn.Module):
         super(LSTMRandWriter, self).__init__()
 
         self.lstm = nn.LSTM(input_size = input_size, hidden_size = cell_size, num_layers = 1, batch_first=True)
-        self.dropout1 = nn.Dropout2d()
+        self.dropout1 = nn.Dropout()
         self.lstm2 = nn.LSTM(input_size = cell_size+input_size, hidden_size = cell_size, num_layers = 1, batch_first=True)
-        self.dropout2 = nn.Dropout2d()
+        self.dropout2 = nn.Dropout()
         self.lstm3 = nn.LSTM(input_size = cell_size * 2, hidden_size = cell_size, num_layers = 1, batch_first=True)
-        self.dropout3 = nn.Dropout2d()
+        self.dropout3 = nn.Dropout()
         self.lstm4 = nn.LSTM(input_size = cell_size * 2, hidden_size = cell_size, num_layers = 1, batch_first=True)
-        self.dropout4 = nn.Dropout2d()
+        self.dropout4 = nn.Dropout()
         self.linear1 = nn.Linear(cell_size*2, 1+ num_clusters*6)
         self.tanh = nn.Tanh()
 
