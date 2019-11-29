@@ -28,26 +28,33 @@ def save_checkpoint(epoch, model, validation_loss, optimizer, directory, filenam
         torch.save(checkpoint, os.path.join(directory, filename))
 
 
-def _plot_trajectory(ax, trajectory, color="red"):
-    x = numpy.cumsum(trajectory[:, 1]) # Deltas to absolute coordinates
-    y = numpy.cumsum(trajectory[:, 2])
+def _plot_trajectory(axes, trajectory, color="red"):
+    delta_x = trajectory[:, 1]
+    delta_y = trajectory[:, 2]
+    x = numpy.cumsum(delta_x)
+    y = numpy.cumsum(delta_y)
 
     cuts = numpy.where(trajectory[:, 0] == 1)[0]
     start = 0
 
     for cut_value in cuts:
-        ax.plot(x[start:cut_value], y[start:cut_value],
-                'k-', linewidth=3, color=color)
+        axes[0, 0].plot(delta_x[start:cut_value], delta_y[start:cut_value], 'k-', linewidth=3, color=color)
+        axes[1, 0].plot(range(start, cut_value), delta_x[start:cut_value], 'k-', linewidth=3, color=color)
+        axes[2, 0].plot(range(start, cut_value), delta_y[start:cut_value], 'k-', linewidth=3, color=color)
+        axes[0, 1].plot(x[start:cut_value], y[start:cut_value], 'k-', linewidth=3, color=color)
+        axes[1, 1].plot(range(start, cut_value), x[start:cut_value], 'k-', linewidth=3, color=color)
+        axes[2, 1].plot(range(start, cut_value), y[start:cut_value], 'k-', linewidth=3, color=color)
         start = cut_value + 1
 
 
 def plot_trajectory(trajectory, reference_trajectory=None, save_name=None):
-    f, ax = pyplot.subplots()
-    _plot_trajectory(ax, trajectory)
+    f, axes = pyplot.subplots(3, 2)
+    _plot_trajectory(axes, trajectory)
     if reference_trajectory is not None:
-        _plot_trajectory(ax, reference_trajectory, color="green")
+        _plot_trajectory(axes, reference_trajectory, color="green")
 
-    ax.axis('equal')
+    axes[0, 0].axis('equal')
+    axes[0, 1].axis('equal')
 
     if save_name is None:
         pyplot.show()
