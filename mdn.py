@@ -72,7 +72,7 @@ def gaussian_probability(sigma, mu, target):
             of the distribution in the corresponding sigma/mu index.
     """
     target = target.unsqueeze(1).expand_as(sigma)
-    ret = ONEOVERSQRT2PI * torch.exp(-0.5 * ((data - mu) / sigma)**2) / sigma
+    ret = ONEOVERSQRT2PI * torch.exp(-0.5 * ((target - mu) / sigma)**2) / sigma
     return torch.prod(ret, 2)
 
 
