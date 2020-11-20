@@ -73,7 +73,7 @@ def gaussian_probability(sigma, mu, target):
     """
     target = target.unsqueeze(1).expand_as(sigma)
     ret = ONEOVERSQRT2PI * torch.exp(-0.5 * ((target - mu) / sigma)**2) / sigma
-    return torch.prod(ret, 2)
+    return torch.prod(ret, 2) + 1e-10   # Don't allow zero here
 
 
 def mdn_loss(pi, sigma, mu, target):
